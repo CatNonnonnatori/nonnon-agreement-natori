@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="nonnon確認書">
+  <title>CAT LOUNGE nonnon - ご利用に関する確認書 & スタッフ事前説明システム</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React 18 & ReactDOM & Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+    body {
+      font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #FAF8F5;
+      color: #2D2A26;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: #D6CFC7;
+      border-radius: 9999px;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      body { background-color: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // =========================================================================
+    // iPad端末内 IndexedDB ヘルパー (CatLoungeNonnonDB)
+    // =========================================================================
+    const DB_NAME = 'CatLoungeNonnonDB';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'signature_records';
+
+    const initDB = () => {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+          reject(new Error('お使いのブラウザはIndexedDBに対応していません。'));
+          return;
+        }
+        const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            store.createIndex('customer_name', 'customer_name', { unique: false });
+            store.createIndex('agreed_at', 'agreed_at', { unique: false });
+          }
+        };
+        request.onsuccess = (e) => resolve(e.target.result);
+        request.onerror = (e) => reject(e.target.error);
+      });
+    };
+
+    const addRecordToDB = async (record) => {
+      const db = await initDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.add(record);
+        req.onsuccess = () => resolve(true);
+        req.onerror = (e) => reject(e.target.error);
+      });
+    };
+
+    const getAllRecordsFromDB = async () => {
+      const db = await initDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME], 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const list = req.result || [];
+          list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          resolve(list);
+        };
+        req.onerror = (e) => reject(e.target.error);
+      });
+    };
+
+    const importRecordsToDB = async (recordsList) => {
+      const db = await initDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        recordsList.forEach((r) => store.put(r));
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = (e) => reject(e.target.error);
+      });
+    };
+
+    // --- 店舗ロゴ（保存されている正式ロゴを使用） ---
+    const NONNON_LOGO = "data:image/png;base64,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";
+    const BrandLogo = ({ size = "normal" }) => (
+      <div className="flex items-center justify-center select-none w-full">
+        <img
+          src={NONNON_LOGO}
+          alt="CAT LOUNGE nonnon"
+          draggable="false"
+          className={size === "small" ? "w-40 max-w-full h-auto object-contain" : "w-56 md:w-64 max-w-full h-auto object-contain"}
+        />
+      </div>
+    );
+// 初期確認書データ
+    const INITIAL_AGREEMENT = {
+      version: "1.0.0",
+      title: "ご利用に関する確認書",
+      sections: [
+        {
+          id: "sec_1",
+          title: "第1項：ご利用にあたって",
+          checkText: "ご利用にあたっての内容を確認しました。",
+          content: "・ご利用時間は最短20分からとなります。\n・お子様からは目を離さず、必ず保護者の方のご同伴をお願いいたします。\n・他のお客様のご迷惑となる行為（大声・走る・騒ぐなど）はお控えください。\n・お子様が走り回る、大声を出すなどの場合は保護者様よりお声がけをお願いいたします。"
+        },
+        {
+          id: "sec_2",
+          title: "第2項：猫とのふれあいについて",
+          checkText: "猫とのふれあいについて確認しました。",
+          content: "・猫を抱き上げたり、無理に触れたりする行為はご遠慮ください。\n・猫が嫌がる・逃げる様子が見られた場合は、そっと距離を取っていただきますようお願いいたします。\n・食べ物の持ち込みはご遠慮ください。\n・猫が眠っているときや休んでいるときは、あたたかく見守っていただけますと幸いです。"
+        },
+        {
+          id: "sec_3",
+          title: "第3項：スタッフの案内へのご協力",
+          checkText: "スタッフの案内への協力について確認しました。",
+          content: "・猫や他のお客様の安全のためスタッフからのご案内・お願いにご協力をお願いいたします。\n・安全確保の観点から、やむを得ずご利用途中でも退店をお願いする場合がございます。"
+        },
+        {
+          id: "sec_4",
+          title: "第4項：写真・動画撮影について",
+          checkText: "写真・動画撮影について確認しました。",
+          content: "・撮影の際はフラッシュをOFFにし、他のお客様やスタッフが写り込まないようご配慮をお願いいたします。"
+        },
+        {
+          id: "sec_5",
+          title: "第5項：免責事項",
+          checkText: "免責事項について確認しました。",
+          content: "・猫による引っかき傷・噛みつき等については応急対応を行いますが、保証はいたしかねます。\n・貴重品はお客様ご自身での管理をお願いいたします。\n・盗難・紛失について当店では責任を負いかねます。\n・動物アレルギーをお持ちのお客様は十分ご注意の上、自己責任でご利用をお願いいたします。\n・ルールが守られなかったことに起因する事故があった場合は、当店では責任を負いかねます。"
+        },
+        {
+          id: "sec_6",
+          title: "第6項：個人情報の取り扱いについて",
+          checkText: "個人情報の取り扱いについて確認しました。",
+          content: "・ご利用者からお預かりした個人情報は、入店管理および安全確保の目的にのみ使用いたします。\n・個人情報は法令に基づき適切に管理し、第三者へ提供・開示することはございません。\n・漏えい・紛失・不正利用防止のため、適切な安全管理措置を講じてまいります。"
+        }
+      ]
+    };
+
+    // =========================================================================
+    // 【ステップ①】スタッフによる事前説明ページ（線引き・マーカー維持）
+    // =========================================================================
+    const StaffExplanationPage = ({ agreement, onFinishExplanation, onCancel }) => {
+      const scrollContainerRef = useRef(null);
+      const contentRef = useRef(null);
+      const canvasRef = useRef(null);
+
+      const [drawMode, setDrawMode] = useState(true);
+      const [toolColor, setToolColor] = useState('rgba(250, 204, 21, 0.28)');
+      const [lineWidth, setLineWidth] = useState(12);
+      const [history, setHistory] = useState([]);
+      const [redoList, setRedoList] = useState([]);
+      const [isDrawing, setIsDrawing] = useState(false);
+
+      const COLORS = [
+        { name: '黄マーカー', value: 'rgba(250, 204, 21, 0.28)', bg: 'bg-yellow-300' },
+        { name: '桃マーカー', value: 'rgba(244, 114, 182, 0.28)', bg: 'bg-pink-400' },
+        { name: '赤マーカー', value: 'rgba(220, 38, 38, 0.28)', bg: 'bg-red-600' },
+        { name: '青マーカー', value: 'rgba(37, 99, 235, 0.28)', bg: 'bg-blue-600' }
+      ];
+
+      useEffect(() => {
+        const updateCanvasSize = () => {
+          if (!contentRef.current || !canvasRef.current) return;
+          const rect = contentRef.current.getBoundingClientRect();
+          const canvas = canvasRef.current;
+          canvas.width = rect.width;
+          canvas.height = contentRef.current.scrollHeight;
+        };
+
+        updateCanvasSize();
+        window.addEventListener('resize', updateCanvasSize);
+        return () => window.removeEventListener('resize', updateCanvasSize);
+      }, [agreement]);
+
+      const pushHistory = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        setHistory(prev => [...prev, canvas.toDataURL()]);
+        setRedoList([]);
+      };
+
+      // 画面上の表示サイズとCanvas内部の描画サイズの差を補正する
+      const getCanvasPoint = (e) => {
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches && e.touches.length ? e.touches[0] :
+                      e.changedTouches && e.changedTouches.length ? e.changedTouches[0] : null;
+        const clientX = touch ? touch.clientX : e.clientX;
+        const clientY = touch ? touch.clientY : e.clientY;
+        const scaleX = rect.width ? canvas.width / rect.width : 1;
+        const scaleY = rect.height ? canvas.height / rect.height : 1;
+        return {
+          x: (clientX - rect.left) * scaleX,
+          y: (clientY - rect.top) * scaleY
+        };
+      };
+
+      const handleStartDraw = (e) => {
+        if (!drawMode) return;
+        e.preventDefault();
+        pushHistory();
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const { x, y } = getCanvasPoint(e);
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.strokeStyle = toolColor;
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        setIsDrawing(true);
+      };
+
+      const handleMoveDraw = (e) => {
+        if (!drawMode || !isDrawing) return;
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const { x, y } = getCanvasPoint(e);
+
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      };
+
+      const handleEndDraw = () => {
+        if (!drawMode || !isDrawing) return;
+        setIsDrawing(false);
+      };
+
+      const handleUndo = () => {
+        if (history.length === 0) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const currentData = canvas.toDataURL();
+        const previousData = history[history.length - 1];
+
+        setRedoList(prev => [...prev, currentData]);
+        setHistory(prev => prev.slice(0, prev.length - 1));
+
+        const img = new Image();
+        img.src = previousData;
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        };
+      };
+
+      const handleRedo = () => {
+        if (redoList.length === 0) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const currentData = canvas.toDataURL();
+        const nextData = redoList[redoList.length - 1];
+
+        setHistory(prev => [...prev, currentData]);
+        setRedoList(prev => prev.slice(0, prev.length - 1));
+
+        const img = new Image();
+        img.src = nextData;
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        };
+      };
+
+      const handleClearAll = () => {
+        if (!confirm('書き込んだマーカーや線をすべて消去しますか？')) return;
+        pushHistory();
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 bg-[#F4F1EA] flex flex-col select-none">
+          <div className="bg-[#1C1917] text-white px-4 py-2.5 flex justify-between items-center shadow-md flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="bg-amber-500 text-black text-[10px] font-bold px-2 py-0.5 rounded tracking-wide">
+                ① スタッフ説明
+              </span>
+              <span className="text-xs md:text-sm font-semibold tracking-wide">
+                ご利用前の事前説明（画面への直接線引き・マーカー対応）
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="text-stone-300 hover:text-white text-xs px-2.5 py-1 rounded border border-stone-600 hover:bg-stone-800"
+              >
+                説明を中断
+              </button>
+              <button
+                type="button"
+                onClick={onFinishExplanation}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs md:text-sm px-4 py-1.5 rounded-lg shadow transition flex items-center gap-1.5"
+              >
+                <span>お客様の確認へ進む</span>
+                <span className="text-base leading-none">➔</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white border-b border-[#DDD5CA] px-4 py-2 shadow-sm flex flex-wrap justify-between items-center gap-3 flex-shrink-0">
+            <div className="flex items-center bg-stone-100 p-1 rounded-xl border border-stone-200">
+              <button
+                type="button"
+                onClick={() => setDrawMode(true)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                  drawMode ? 'bg-[#2D2A26] text-white shadow-sm' : 'text-stone-600 hover:bg-stone-200'
+                }`}
+              >
+                <span>✍️ 線を引く</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawMode(false)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                  !drawMode ? 'bg-[#2D2A26] text-white shadow-sm' : 'text-stone-600 hover:bg-stone-200'
+                }`}
+              >
+                <span>👆 画面スクロール</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-stone-500">色:</span>
+              <div className="flex gap-1.5">
+                {COLORS.map((c) => (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() => {
+                      setToolColor(c.value);
+                      if (!drawMode) setDrawMode(true);
+                      if (c.value.includes('rgba') && lineWidth < 8) setLineWidth(12);
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-lg font-medium border flex items-center gap-1.5 transition ${
+                      toolColor === c.value
+                        ? 'border-black ring-2 ring-stone-400 bg-stone-50 scale-105'
+                        : 'border-stone-200 bg-white hover:bg-stone-50'
+                    }`}
+                  >
+                    <span className={`w-3.5 h-3.5 rounded-full ${c.bg} border border-black/20`}></span>
+                    <span className="text-[11px]">{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold text-stone-500">太さ:</span>
+              {[
+                { label: '細', size: 3 },
+                { label: '中', size: 8 },
+                { label: '太', size: 16 }
+              ].map((w) => (
+                <button
+                  key={w.label}
+                  type="button"
+                  onClick={() => {
+                    setLineWidth(w.size);
+                    if (!drawMode) setDrawMode(true);
+                  }}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-medium border transition ${
+                    lineWidth === w.size ? 'bg-stone-800 text-white border-black' : 'bg-white text-stone-600 border-stone-200'
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={history.length === 0}
+                className="px-2.5 py-1 text-xs border rounded-lg bg-stone-50 hover:bg-stone-100 disabled:opacity-30 font-medium"
+              >
+                ↩ 戻す
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={redoList.length === 0}
+                className="px-2.5 py-1 text-xs border rounded-lg bg-stone-50 hover:bg-stone-100 disabled:opacity-30 font-medium"
+              >
+                ↪ やり直す
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="px-2.5 py-1 text-xs border border-red-200 text-red-600 rounded-lg bg-red-50 hover:bg-red-100 font-medium"
+              >
+                全消去
+              </button>
+            </div>
+          </div>
+
+          <div
+            ref={scrollContainerRef}
+            className={`flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar relative ${
+              drawMode ? 'touch-none' : 'touch-pan-y'
+            }`}
+          >
+            <div
+              ref={contentRef}
+              className="max-w-3xl mx-auto bg-white rounded-2xl p-6 md:p-10 shadow-md border border-[#E5DDD2] relative"
+            >
+              <canvas
+                ref={canvasRef}
+                onMouseDown={handleStartDraw}
+                onMouseMove={handleMoveDraw}
+                onMouseUp={handleEndDraw}
+                onMouseLeave={handleEndDraw}
+                onTouchStart={handleStartDraw}
+                onTouchMove={handleMoveDraw}
+                onTouchEnd={handleEndDraw}
+                className={`absolute inset-0 w-full h-full z-20 ${
+                  drawMode ? 'cursor-crosshair pointer-events-auto' : 'pointer-events-none'
+                }`}
+              />
+
+              <div className="relative z-10 space-y-6">
+                <div className="text-center pb-4 border-b border-[#EAE3DA]">
+                  <BrandLogo size="small" />
+                  <h1 className="text-2xl font-bold text-[#1C1917] mt-3">{agreement.title}</h1>
+                  <p className="text-xs text-stone-500 mt-1">Ver. {agreement.version} （スタッフ事前説明用）</p>
+                  <p className="text-xs text-amber-800 bg-amber-50 inline-block px-3 py-1 rounded-full border border-amber-200 mt-2 font-medium">
+                    ※ 重要事項に線やマーカーを引きながらお客様へご説明ください
+                  </p>
+                </div>
+
+                <div className="space-y-6">
+                  {agreement.sections.map((sec) => (
+                    <div
+                      key={sec.id}
+                      className="p-5 rounded-xl border border-[#E8E2D8] bg-[#FDFBF7]"
+                    >
+                      <h2 className="text-lg font-bold text-[#1C1917] mb-2">{sec.title}</h2>
+                      <p className="text-base text-[#3A3633] leading-relaxed whitespace-pre-line pl-1 font-normal">
+                        {sec.content}
+                      </p>
+                      <div className="mt-3 pt-3 border-t border-[#F0EBE1] text-xs font-bold text-stone-500">
+                        【確認チェック予定項目】 {sec.checkText}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-5 rounded-xl border border-stone-200 bg-stone-50 space-y-2">
+                  <h3 className="font-bold text-sm text-stone-700">写真・動画撮影の個別同意（任意項目）</h3>
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    ① スタッフによる店内風景・写真撮影への同意<br />
+                    ② 当店公式SNSやHPへの写真掲載への同意<br />
+                    ※上記は任意同意項目であり、説明後にお客様ご自身に個別に選択していただきます。
+                  </p>
+                </div>
+
+                <div className="pt-6 border-t border-stone-200 text-center">
+                  <button
+                    type="button"
+                    onClick={onFinishExplanation}
+                    className="w-full py-4 bg-[#2D2A26] hover:bg-black text-white font-bold text-base rounded-xl shadow-lg transition active:scale-[0.99]"
+                  >
+                    説明を終えて「② お客様による確認ページ」へ進む ➔
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // =========================================================================
+    // メインアプリケーション
+    // =========================================================================
+    function App() {
+      const [currentAgreement, setCurrentAgreement] = useState(INITIAL_AGREEMENT);
+      const [records, setRecords] = useState([]);
+      const [isDBLoaded, setIsDBLoaded] = useState(false);
+      
+      const [activeView, setActiveView] = useState('customer');
+      const [customerFlowStep, setCustomerFlowStep] = useState('not_started');
+
+      const [checks, setChecks] = useState({});
+      const [staffPhotoConsent, setStaffPhotoConsent] = useState(null);
+      const [snsPhotoConsent, setSnsPhotoConsent] = useState(null);
+      
+      // 【一本化】お客様のお名前入力欄（お客様署名）
+      const [signatureName, setSignatureName] = useState('');
+      
+      const [completedRecord, setCompletedRecord] = useState(null);
+      const [isSaving, setIsSaving] = useState(false);
+
+      // パスワード認証ステート
+      const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+      const [showPasswordModal, setShowPasswordModal] = useState(false);
+      const [inputPassword, setInputPassword] = useState('');
+      const [adminPassword, setAdminPassword] = useState(() => {
+        return localStorage.getItem('nonnon_admin_pwd') || 'nonnon1234';
+      });
+
+      // 管理画面用ステート
+      const [adminTab, setAdminTab] = useState('records');
+      const [searchQuery, setSearchQuery] = useState('');
+      const [selectedRecordModal, setSelectedRecordModal] = useState(null);
+
+      // 約款編集用ステート
+      const [editTitle, setEditTitle] = useState(currentAgreement.title);
+      const [editVersion, setEditVersion] = useState("1.1.0");
+      const [editSections, setEditSections] = useState(JSON.parse(JSON.stringify(currentAgreement.sections)));
+
+      const fileInputRef = useRef(null);
+
+      useEffect(() => {
+        const loadStoredData = async () => {
+          try {
+            if (navigator.storage && navigator.storage.persist) {
+              await navigator.storage.persist();
+            }
+            const storedRecords = await getAllRecordsFromDB();
+            setRecords(storedRecords);
+            setIsDBLoaded(true);
+          } catch (err) {
+            console.error('IndexedDBの読み込みエラー:', err);
+            alert('端末内データベースの初期化に失敗しました。Safariのプライベートブラウズモードが解除されているかご確認ください。');
+            setIsDBLoaded(true);
+          }
+        };
+        loadStoredData();
+      }, []);
+
+      const allChecked = currentAgreement.sections.every(sec => checks[sec.id]);
+
+      const handleStartStaffExplanation = () => {
+        setChecks({});
+        setStaffPhotoConsent(null);
+        setSnsPhotoConsent(null);
+        setSignatureName('');
+        setActiveView('staff_explaining');
+      };
+
+      const handleFinishExplanation = () => {
+        setActiveView('customer');
+        setCustomerFlowStep('read');
+      };
+
+      // 文字入力式「お客様署名」の送信・保存ハンドラ
+      const handleCustomerSubmit = async () => {
+        if (!signatureName || signatureName.trim() === '') {
+          alert('「お客様署名」欄にご本人のお名前を入力してください。');
+          return;
+        }
+
+        setIsSaving(true);
+        const now = new Date();
+        const jstTime = now.toLocaleDateString('ja-JP', {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+
+        const trimmedName = signatureName.trim();
+        const newRecord = {
+          id: 'REC-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+          timestamp: Date.now(),
+          customer_name: trimmedName, // 一本化したお名前を顧客氏名兼署名として保存
+          signature_name: trimmedName,
+          guardian_name: null,
+          agreement_title: currentAgreement.title,
+          agreement_version: currentAgreement.version,
+          agreement_snapshot: JSON.parse(JSON.stringify(currentAgreement)),
+          staff_photo_consent: staffPhotoConsent,
+          sns_photo_consent: snsPhotoConsent,
+          agreed_at: jstTime,
+          checks: checks
+        };
+
+        try {
+          await addRecordToDB(newRecord);
+          setRecords(prev => [newRecord, ...prev]);
+          setCompletedRecord(newRecord);
+          setIsSaving(false);
+          setCustomerFlowStep('done');
+        } catch (error) {
+          console.error('端末内保存失敗:', error);
+          setIsSaving(false);
+          alert('【エラー】iPad端末内への署名記録の保存に失敗しました。端末の空き容量を確認し、再度お試しください。');
+        }
+      };
+
+      const handleSwitchToAdmin = () => {
+        if (isAdminAuthenticated) {
+          setActiveView('admin');
+        } else {
+          setInputPassword('');
+          setShowPasswordModal(true);
+        }
+      };
+
+      const handlePasswordSubmit = (e) => {
+        e.preventDefault();
+        if (inputPassword === adminPassword) {
+          setIsAdminAuthenticated(true);
+          setShowPasswordModal(false);
+          setActiveView('admin');
+        } else {
+          alert('パスワードが正しくありません。');
+        }
+      };
+
+      const handlePublishAgreement = () => {
+        if (!editTitle.trim()) {
+          alert('確認書のタイトルを入力してください。');
+          return;
+        }
+        if (editSections.length === 0) {
+          alert('少なくとも1つ以上の項目が必要です。');
+          return;
+        }
+        const updated = {
+          version: editVersion,
+          title: editTitle,
+          sections: editSections
+        };
+        setCurrentAgreement(updated);
+        
+        const nextParts = editVersion.split('.');
+        if (nextParts.length === 3) {
+          nextParts[2] = String(Number(nextParts[2]) + 1);
+          setEditVersion(nextParts.join('.'));
+        }
+        alert(`確認書を【Ver.${updated.version}】として公開しました。過去の署名記録には影響しません。`);
+      };
+
+      const handleExportCSV = () => {
+        if (records.length === 0) {
+          alert('出力する署名記録がありません。');
+          return;
+        }
+        const header = ['ID', '同意日時', 'お客様署名(氏名)', '規約Ver', 'スタッフ撮影同意', 'SNS掲載同意'];
+        const rows = records.map(r => [
+          r.id,
+          r.agreed_at,
+          `"${r.customer_name}"`,
+          r.agreement_version,
+          r.staff_photo_consent ? '同意' : '拒否',
+          r.sns_photo_consent ? '同意' : '拒否'
+        ]);
+        const csvContent = '\uFEFF' + [header, ...rows].map(e => e.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nonnon_records_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+      };
+
+      const handleExportFullBackup = () => {
+        if (records.length === 0) {
+          alert('バックアップする記録がありません。');
+          return;
+        }
+        const backupData = {
+          export_date: new Date().toISOString(),
+          version: "1.0",
+          records: records
+        };
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nonnon_full_backup_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+      };
+
+      const handleImportBackup = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const parsed = JSON.parse(event.target.result);
+            if (!parsed.records || !Array.isArray(parsed.records)) {
+              throw new Error('バックアップファイルの形式が正しくありません。');
+            }
+            if (confirm(`${parsed.records.length} 件の記録をiPad内に復元しますか？`)) {
+              await importRecordsToDB(parsed.records);
+              const reloaded = await getAllRecordsFromDB();
+              setRecords(reloaded);
+              alert('バックアップからの復元が正常に完了しました。');
+            }
+          } catch (err) {
+            console.error(err);
+            alert('復元に失敗しました。有効なバックアップファイル（JSON）を選択してください。');
+          } finally {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+        };
+        reader.readAsText(file);
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col justify-between selection:bg-[#EAE4DC]">
+          {/* 右下 固定スイッチャー */}
+          <div className="fixed bottom-4 right-4 z-40 no-print flex flex-col gap-2 items-end">
+            {activeView === 'admin' && (
+              <button
+                type="button"
+                onClick={handleStartStaffExplanation}
+                className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl border border-amber-400 transition flex items-center gap-1.5"
+              >
+                <span>① 事前説明を開始する</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (activeView === 'customer') {
+                  handleSwitchToAdmin();
+                } else {
+                  setActiveView('customer');
+                }
+              }}
+              className="bg-[#2D2A26] text-[#FAF8F5] text-xs font-medium px-4 py-2.5 rounded-full shadow-lg border border-[#D5CDC5] hover:bg-black transition flex items-center gap-2"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              {activeView === 'customer' ? '店舗スタッフ管理画面へ' : '受付・確認画面に戻る'}
+            </button>
+          </div>
+
+          {/* パスワード認証モーダル */}
+          {showPasswordModal && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl">
+                <div className="text-center">
+                  <h3 className="font-bold text-base text-stone-800">スタッフ専用パスワード入力</h3>
+                  <p className="text-xs text-stone-500 mt-1">管理画面に入るためのパスワードを入力してください</p>
+                </div>
+                <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                  <input
+                    type="password"
+                    placeholder="パスワード (初期値: nonnon1234)"
+                    value={inputPassword}
+                    onChange={(e) => setInputPassword(e.target.value)}
+                    autoFocus
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:border-stone-800 bg-stone-50"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordModal(false)}
+                      className="flex-1 py-2 text-xs border border-stone-300 rounded-lg hover:bg-stone-100"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2 text-xs bg-stone-900 text-white font-bold rounded-lg hover:bg-black"
+                    >
+                      認証
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ① スタッフによる事前説明ページ */}
+          {activeView === 'staff_explaining' && (
+            <StaffExplanationPage
+              agreement={currentAgreement}
+              onFinishExplanation={handleFinishExplanation}
+              onCancel={() => setActiveView('admin')}
+            />
+          )}
+
+          {/* お客様向け画面群 */}
+          {activeView === 'customer' && (
+            <div className="flex-1 flex flex-col justify-between">
+              <header className="border-b border-[#EAE3DA] bg-[#FAF8F5]/90 backdrop-blur sticky top-0 z-30 py-3.5">
+                <div className="max-w-xl mx-auto px-4 flex justify-center">
+                  <BrandLogo size="small" />
+                </div>
+              </header>
+
+              <main className="max-w-xl mx-auto px-4 py-6 w-full flex-1">
+                {/* 初期待機画面 */}
+                {customerFlowStep === 'not_started' && (
+                  <div className="text-center space-y-6 pt-4 animate-fade-in">
+                    
+                    <div className="space-y-1">
+                      <p className="text-xs tracking-widest text-[#78716C]">CAT LOUNGE nonnon</p>
+                      <h1 className="text-2xl font-bold text-[#1C1917]">ご来店ありがとうございます</h1>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-[#EAE3DA] shadow-sm text-left space-y-3">
+                      <div className="flex items-center gap-2 text-amber-800 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                        <span className="text-base font-bold">ℹ️</span>
+                        <p className="text-xs font-bold">
+                          スタッフより重要事項をご案内いたします
+                        </p>
+                      </div>
+                      <p className="text-sm text-[#59534E] leading-relaxed">
+                        猫ちゃんたちとお客様が安心して心地よい時間を過ごせるよう、ご入店前にスタッフより利用ルールをご案内いたします。
+                      </p>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={handleStartStaffExplanation}
+                        className="w-full py-4 bg-[#2D2A26] text-white font-bold rounded-xl shadow hover:bg-black transition active:scale-[0.99] text-base"
+                      >
+                        ① スタッフによる事前説明を開始する
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ② お客様による確認書の確認ページ */}
+                {customerFlowStep === 'read' && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="text-center space-y-1">
+                      <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                        ② お客様による確認ページ
+                      </span>
+                      <h2 className="text-xl font-bold text-[#1C1917] mt-1">{currentAgreement.title}</h2>
+                      <p className="text-xs text-[#78716C]">Ver. {currentAgreement.version}</p>
+                    </div>
+
+                    <div className="p-4 bg-white rounded-xl border border-[#EAE3DA] shadow-sm text-xs text-[#59534E] leading-relaxed">
+                      スタッフより説明を受けました内容について、改めて確認書の全文をご確認ください。ご確認後、下部のボタンより同意・署名ページへお進みいただけます。
+                    </div>
+
+                    <div className="space-y-4">
+                      {currentAgreement.sections.map((sec) => (
+                        <div
+                          key={sec.id}
+                          className="p-5 rounded-xl border border-[#E5DDD2] bg-white shadow-sm space-y-2"
+                        >
+                          <h3 className="font-bold text-base text-[#1C1917]">{sec.title}</h3>
+                          <p className="text-sm text-[#44403C] leading-relaxed whitespace-pre-line pl-1">
+                            {sec.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={() => setCustomerFlowStep('consent_sign')}
+                        className="w-full py-4 bg-[#2D2A26] text-white font-bold rounded-xl shadow hover:bg-black transition active:scale-[0.99] text-base"
+                      >
+                        内容を確認しました（③ 同意・署名へ進む） ➔
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ③ お客様の同意・お客様署名ページ（名前入力欄は1か所のみ） */}
+                {customerFlowStep === 'consent_sign' && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="text-center space-y-1">
+                      <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                        ③ 同意・署名ページ
+                      </span>
+                      <h2 className="text-xl font-bold text-[#1C1917] mt-1">利用規約への同意とご署名</h2>
+                      <p className="text-xs text-[#78716C]">各項目を確認し、チェックとお名前のご入力をお願いいたします</p>
+                    </div>
+
+                    {/* 同意事項チェックボックス */}
+                    <div className="space-y-3 bg-white p-5 rounded-xl border border-[#EAE3DA] shadow-sm">
+                      <h3 className="font-bold text-sm text-[#1C1917] border-b border-[#F0EBE1] pb-2">
+                        同意事項の確認チェック <span className="text-red-500 text-xs">（すべて必須）</span>
+                      </h3>
+                      {currentAgreement.sections.map((sec) => {
+                        const isChecked = !!checks[sec.id];
+                        return (
+                          <label
+                            key={sec.id}
+                            className={`flex items-start gap-3 p-3 rounded-lg border transition cursor-pointer select-none ${
+                              isChecked ? 'bg-[#FAF8F5] border-[#C4B9AC]' : 'bg-stone-50 border-stone-200'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => setChecks(prev => ({ ...prev, [sec.id]: !prev[sec.id] }))}
+                              className="w-5 h-5 mt-0.5 rounded border-[#B8AEA3] text-[#2D2A26] focus:ring-0 cursor-pointer"
+                            />
+                            <span className={`text-xs md:text-sm font-medium ${isChecked ? 'text-[#1C1917]' : 'text-stone-500'}`}>
+                              {sec.checkText}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {/* 撮影に関する個別同意（任意項目） */}
+                    <div className="bg-white p-5 rounded-xl border border-[#EAE3DA] shadow-sm space-y-4">
+                      <h3 className="font-bold text-sm text-[#1C1917] border-b border-[#F0EBE1] pb-2">
+                        写真・動画撮影に関する個別同意（任意）
+                      </h3>
+
+                      <div>
+                        <p className="text-xs font-medium text-stone-700 mb-2">
+                          ① 店舗スタッフによる写真・動画撮影
+                        </p>
+                        <div className="flex gap-6">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="staff_consent"
+                              checked={staffPhotoConsent === true}
+                              onChange={() => setStaffPhotoConsent(true)}
+                              className="text-[#2D2A26] focus:ring-0"
+                            />
+                            同意する
+                          </label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="staff_consent"
+                              checked={staffPhotoConsent === false}
+                              onChange={() => setStaffPhotoConsent(false)}
+                              className="text-[#2D2A26] focus:ring-0"
+                            />
+                            同意しない
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-[#F0EBE1]">
+                        <p className="text-xs font-medium text-stone-700 mb-2">
+                          ② 店舗SNS・ホームページへの写真掲載
+                        </p>
+                        <div className="flex gap-6">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="sns_consent"
+                              checked={snsPhotoConsent === true}
+                              onChange={() => setSnsPhotoConsent(true)}
+                              className="text-[#2D2A26] focus:ring-0"
+                            />
+                            同意する
+                          </label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="sns_consent"
+                              checked={snsPhotoConsent === false}
+                              onChange={() => setSnsPhotoConsent(false)}
+                              className="text-[#2D2A26] focus:ring-0"
+                            />
+                            同意しない
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ===【唯一の入力欄：お客様署名】=== */}
+                    <div className="bg-white p-5 rounded-xl border-2 border-[#C4B9AC] shadow-sm space-y-3">
+                      <div className="border-b border-[#F0EBE1] pb-2">
+                        <h3 className="font-bold text-base text-[#1C1917] flex items-center justify-between">
+                          <span>お客様署名</span>
+                          <span className="text-xs text-red-500 font-bold bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                            ※必須入力
+                          </span>
+                        </h3>
+                        <p className="text-xs text-stone-600 mt-2 leading-relaxed">
+                          「私は、スタッフからの説明を受け、確認書の内容を十分に理解したうえで同意いたします。」
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5 pt-1">
+                        <input
+                          type="text"
+                          value={signatureName}
+                          onChange={(e) => setSignatureName(e.target.value)}
+                          placeholder="ご本人のお名前を入力してください"
+                          className="w-full px-4 py-3 text-base font-bold border-2 border-[#DDD5CA] rounded-xl bg-stone-50 focus:bg-white focus:outline-none focus:border-[#1C1917] transition shadow-inner"
+                        />
+                        <p className="text-[11px] text-stone-500">
+                          ※ 確認書の同意および入店記録として、上記枠内にご本人のお名前をご入力ください。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setCustomerFlowStep('read')}
+                        className="w-1/3 py-3.5 border border-[#D5CDC5] rounded-xl text-sm font-medium hover:bg-stone-100"
+                      >
+                        戻る
+                      </button>
+                      <button
+                        onClick={handleCustomerSubmit}
+                        disabled={isSaving || !allChecked || !signatureName.trim() || staffPhotoConsent === null || snsPhotoConsent === null}
+                        className={`flex-1 py-3.5 rounded-xl text-sm font-bold shadow transition ${
+                          !isSaving && allChecked && signatureName.trim() && staffPhotoConsent !== null && snsPhotoConsent !== null
+                            ? 'bg-[#2D2A26] text-white hover:bg-black cursor-pointer'
+                            : 'bg-[#D6CFC7] text-[#8C847B] cursor-not-allowed'
+                        }`}
+                      >
+                        {isSaving ? 'iPad本体へ保存中...' : '同意して署名を送信する'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ④ 完了画面 */}
+                {customerFlowStep === 'done' && completedRecord && (
+                  <div className="text-center space-y-6 pt-4 animate-fade-in">
+                    <div className="w-14 h-14 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+                      ✓
+                    </div>
+                    <div className="space-y-1">
+                      <h2 className="text-2xl font-bold text-[#1C1917]">ご確認・ご署名ありがとうございます</h2>
+                      <p className="text-sm text-[#59534E]">猫ちゃんたちと素敵な時間をお過ごしください。</p>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-xl border border-[#EAE3DA] max-w-sm mx-auto text-left space-y-2 text-xs">
+                      <div className="flex items-center gap-1.5 text-emerald-700 font-bold border-b pb-1.5">
+                        <span>✓</span> スタッフによる重要事項の説明完了済み
+                      </div>
+                      <div className="text-stone-600">受付完了日時：{completedRecord.agreed_at}</div>
+                      <div className="text-stone-600">確認書バージョン：Ver. {completedRecord.agreement_version}</div>
+                      <div className="text-stone-800 pt-1 border-t flex justify-between items-center">
+                        <span className="text-stone-500">お客様署名：</span>
+                        <span className="font-bold text-sm bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                          {completedRecord.customer_name} 様
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-4">
+                      <button
+                        onClick={() => {
+                          setChecks({});
+                          setStaffPhotoConsent(null);
+                          setSnsPhotoConsent(null);
+                          setSignatureName('');
+                          setCustomerFlowStep('not_started');
+                        }}
+                        className="px-6 py-2.5 bg-stone-200 text-stone-700 rounded-xl text-xs hover:bg-stone-300 transition"
+                      >
+                        受付初期画面へ戻る
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </main>
+
+              <footer className="py-4 text-center text-[11px] text-stone-400 border-t border-[#EAE3DA]">
+                &copy; CAT LOUNGE nonnon. All rights reserved.
+              </footer>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* 2. 店舗管理者用 画面 */}
+          {/* ============================================================== */}
+          {activeView === 'admin' && (
+            <div className="flex-1 flex flex-col bg-[#F3EFEA]">
+              <header className="bg-[#1C1917] text-white px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-md no-print">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white px-2 py-1 rounded">
+                    <BrandLogo size="small" />
+                  </div>
+                  <div>
+                    <h1 className="text-sm md:text-base font-bold">店舗管理システム（iPad本体保存版）</h1>
+                    <p className="text-[11px] text-stone-400">端末内IndexedDB保管 / お客様署名一本化</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleStartStaffExplanation}
+                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs shadow transition flex items-center gap-1.5"
+                  >
+                    <span>📋 ① 事前説明を開始して受付</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminTab('records')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${adminTab === 'records' ? 'bg-stone-700 text-white' : 'text-stone-300 hover:bg-stone-800'}`}
+                  >
+                    署名記録 ({records.length})
+                  </button>
+                  <button
+                    onClick={() => setAdminTab('edit')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${adminTab === 'edit' ? 'bg-stone-700 text-white' : 'text-stone-300 hover:bg-stone-800'}`}
+                  >
+                    確認書の編集・版管理
+                  </button>
+                  <button
+                    onClick={() => setAdminTab('backup')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${adminTab === 'backup' ? 'bg-stone-700 text-white' : 'text-stone-300 hover:bg-stone-800'}`}
+                  >
+                    データ管理・復元
+                  </button>
+                </div>
+              </header>
+
+              <main className="p-4 md:p-6 flex-1 max-w-6xl w-full mx-auto">
+                {/* 署名記録一覧 */}
+                {adminTab === 'records' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-xl border border-[#DDD5CA] shadow-sm">
+                      <div className="w-full sm:w-72">
+                        <input
+                          type="text"
+                          placeholder="お客様署名、日付で検索..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full border border-stone-300 rounded-lg px-3 py-2 text-xs bg-stone-50 focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex gap-2 w-full sm:w-auto">
+                        <button
+                          onClick={handleExportCSV}
+                          className="flex-1 sm:flex-initial px-3 py-2 bg-stone-200 text-stone-800 hover:bg-stone-300 text-xs font-medium rounded-lg transition"
+                        >
+                          CSVエクスポート
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-[#DDD5CA] shadow-sm overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-[#FAF8F5] border-b text-stone-500 font-medium">
+                          <tr>
+                            <th className="p-3">同意日時</th>
+                            <th className="p-3">お客様署名（お名前）</th>
+                            <th className="p-3">版 (Ver)</th>
+                            <th className="p-3">スタッフ撮影</th>
+                            <th className="p-3">SNS掲載</th>
+                            <th className="p-3 text-right">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-100">
+                          {records
+                            .filter(r => 
+                              r.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              r.agreed_at.includes(searchQuery)
+                            )
+                            .map((r) => (
+                              <tr key={r.id} className="hover:bg-stone-50 transition">
+                                <td className="p-3 font-mono text-stone-600">{r.agreed_at}</td>
+                                <td className="p-3 font-bold text-stone-800 text-sm">{r.customer_name}</td>
+                                <td className="p-3 text-stone-500">{r.agreement_version}</td>
+                                <td className="p-3">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] ${r.staff_photo_consent ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>
+                                    {r.staff_photo_consent ? '同意' : '拒否'}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] ${r.sns_photo_consent ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>
+                                    {r.sns_photo_consent ? '同意' : '拒否'}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-right">
+                                  <button
+                                    onClick={() => setSelectedRecordModal(r)}
+                                    className="px-2.5 py-1 bg-stone-100 text-stone-700 rounded hover:bg-stone-200"
+                                  >
+                                    詳細 / 印刷
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          {records.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="text-center p-8 text-stone-400">
+                                iPad内に署名記録がまだありません（「①事前説明を開始」から受付を行ってください）
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* 確認書編集・版管理 */}
+                {adminTab === 'edit' && (
+                  <div className="bg-white p-6 rounded-xl border border-[#DDD5CA] shadow-sm space-y-6">
+                    <div className="border-b pb-4">
+                      <h2 className="text-base font-bold text-stone-800">確認書・約款の編集 & 新バージョン公開</h2>
+                      <p className="text-xs text-stone-500 mt-1">
+                        内容を修正して公開すると、事前説明画面およびお客様確認画面の双方が即時アップデートされます。過去の署名データには影響しません。
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-stone-600 mb-1">確認書タイトル</label>
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-xs bg-stone-50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-stone-600 mb-1">更新バージョン番号</label>
+                        <input
+                          type="text"
+                          value={editVersion}
+                          onChange={(e) => setEditVersion(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-xs bg-stone-50"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-bold text-stone-700">各項目の編集・追加・削除</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newId = 'sec_' + (editSections.length + 1);
+                            setEditSections([
+                              ...editSections,
+                              {
+                                id: newId,
+                                title: `第${editSections.length + 1}項：新規項目`,
+                                checkText: '上記の内容を確認しました。',
+                                content: '・利用ルールや注意事項を記入してください。'
+                              }
+                            ]);
+                          }}
+                          className="text-xs bg-stone-800 text-white px-3 py-1.5 rounded-lg hover:bg-black transition"
+                        >
+                          ＋ 項目を追加
+                        </button>
+                      </div>
+
+                      {editSections.map((sec, idx) => (
+                        <div key={sec.id} className="border border-stone-200 p-4 rounded-xl bg-stone-50 space-y-2">
+                          <div className="flex justify-between items-center gap-2">
+                            <input
+                              type="text"
+                              value={sec.title}
+                              onChange={(e) => {
+                                const list = [...editSections];
+                                list[idx].title = e.target.value;
+                                setEditSections(list);
+                              }}
+                              className="font-bold text-xs border rounded px-2 py-1 w-full bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (editSections.length <= 1) {
+                                  alert('全ての項目を削除することはできません。');
+                                  return;
+                                }
+                                if (confirm('この項目を削除してもよろしいですか？')) {
+                                  const list = [...editSections];
+                                  list.splice(idx, 1);
+                                  setEditSections(list);
+                                }
+                              }}
+                              className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded bg-red-50"
+                            >
+                              削除
+                            </button>
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={sec.content}
+                            onChange={(e) => {
+                              const list = [...editSections];
+                              list[idx].content = e.target.value;
+                              setEditSections(list);
+                            }}
+                            className="w-full border rounded-lg p-2 text-xs bg-white"
+                          />
+                          <input
+                            type="text"
+                            value={sec.checkText}
+                            onChange={(e) => {
+                              const list = [...editSections];
+                              list[idx].checkText = e.target.value;
+                              setEditSections(list);
+                            }}
+                            placeholder="確認チェック文言"
+                            className="w-full border rounded px-2 py-1 text-xs bg-white text-stone-600"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={handlePublishAgreement}
+                        className="px-6 py-3 bg-[#2D2A26] text-white rounded-xl text-sm font-medium hover:bg-black transition shadow"
+                      >
+                        新バージョンとして公開する
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* データ管理・バックアップ・復元・パスワード設定 */}
+                {adminTab === 'backup' && (
+                  <div className="space-y-6">
+                    <div className="bg-white p-6 rounded-xl border border-[#DDD5CA] shadow-sm space-y-4">
+                      <h2 className="text-base font-bold text-stone-800">iPad本体内データのバックアップと復元</h2>
+                      <p className="text-xs text-stone-500 leading-relaxed">
+                        署名記録データをiPadの「ファイル」アプリまたは外付けドライブに保存できます。別のiPadへの移行や故障時の備えとしてご利用ください。
+                      </p>
+
+                      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={handleExportFullBackup}
+                          className="px-4 py-2.5 bg-stone-800 hover:bg-black text-white text-xs font-bold rounded-lg shadow transition"
+                        >
+                          📦 完全バックアップファイルを保存 (JSON)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                          className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow transition"
+                        >
+                          📥 バックアップファイルから復元する
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".json"
+                          onChange={handleImportBackup}
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl border border-[#DDD5CA] shadow-sm space-y-4">
+                      <h2 className="text-base font-bold text-stone-800">管理画面パスワードの変更</h2>
+                      <div className="max-w-xs space-y-3">
+                        <input
+                          type="text"
+                          defaultValue={adminPassword}
+                          id="newAdminPwd"
+                          placeholder="新しいパスワード"
+                          className="w-full px-3 py-2 text-xs border rounded-lg bg-stone-50 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = document.getElementById('newAdminPwd').value;
+                            if (val.trim()) {
+                              setAdminPassword(val.trim());
+                              localStorage.setItem('nonnon_admin_pwd', val.trim());
+                              alert('管理画面パスワードを更新しました。');
+                            }
+                          }}
+                          className="px-4 py-2 bg-stone-700 hover:bg-stone-900 text-white text-xs rounded-lg font-medium"
+                        >
+                          パスワードを保存
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </main>
+
+              {/* 署名控え モーダル & 印刷対応 */}
+              {selectedRecordModal && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                  <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
+                    <div className="flex justify-between items-center border-b pb-3 no-print">
+                      <h3 className="font-bold text-base">署名済み確認書 控え</h3>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => window.print()}
+                          className="px-3 py-1 bg-stone-800 text-white rounded text-xs font-bold"
+                        >
+                          印刷 / PDF出力
+                        </button>
+                        <button
+                          onClick={() => setSelectedRecordModal(null)}
+                          className="px-3 py-1 bg-stone-200 text-stone-700 rounded text-xs"
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-center py-2 border-b">
+                      <BrandLogo size="small" />
+                      <h2 className="text-lg font-bold mt-2">{selectedRecordModal.agreement_title}</h2>
+                      <p className="text-xs text-stone-500">版：Ver. {selectedRecordModal.agreement_version} / 受理ID: {selectedRecordModal.id}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-stone-50 p-3 rounded-lg border">
+                      <div>署名日時：{selectedRecordModal.agreed_at}</div>
+                      <div>お客様署名：<b>{selectedRecordModal.customer_name}</b> 様</div>
+                      <div>スタッフ撮影：{selectedRecordModal.staff_photo_consent ? '同意' : '不同意'}</div>
+                      <div>SNS/HP掲載：{selectedRecordModal.sns_photo_consent ? '同意' : '不同意'}</div>
+                    </div>
+
+                    {/* お客様署名（文字入力）表示枠 */}
+                    <div className="border-2 border-[#DDD5CA] p-4 rounded-xl bg-stone-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-stone-500">お客様署名</p>
+                        <p className="text-lg font-bold text-stone-900 mt-0.5">
+                          {selectedRecordModal.customer_name} 様
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200 font-medium">
+                        ✓ 本人署名確認済み
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 pt-2">
+                      <p className="text-xs font-bold text-stone-700">同意時点の約款全文スナップショット</p>
+                      <div className="space-y-2 text-xs text-stone-600 bg-stone-50 p-3 rounded-lg max-h-48 overflow-y-auto">
+                        {selectedRecordModal.agreement_snapshot.sections.map((s) => (
+                          <div key={s.id} className="border-b border-stone-200 pb-1.5 last:border-0">
+                            <span className="font-bold text-stone-800">{s.title}</span>
+                            <p className="whitespace-pre-line pl-1">{s.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
